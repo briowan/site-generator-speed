@@ -163,6 +163,17 @@ function parseFrontMatter(text) {
   const first = nl === -1 ? text : text.slice(0, nl);
   if (first !== '---') return { error: 'no front matter' };
   if (nl === -1) return { error: 'the front matter is not closed' };
+  // the reference looks for the closing --- before it reads any line between
+  let closePos = -1;
+  let closeEnd = -1;
+  for (let p = nl + 1; ;) {
+    const e = text.indexOf('\n', p);
+    const l = e === -1 ? text.slice(p) : text.slice(p, e);
+    if (l === '---') { closePos = p; closeEnd = e; break; }
+    if (e === -1) break;
+    p = e + 1;
+  }
+  if (closePos === -1) return { error: 'the front matter is not closed' };
   const data = {};
   let pos = nl + 1;
   let lineNo = 1; // opening --- is line 1; next line is 2
@@ -170,13 +181,14 @@ function parseFrontMatter(text) {
     lineNo++;
     const end = text.indexOf('\n', pos);
     const line = end === -1 ? text.slice(pos) : text.slice(pos, end);
-    if (line === '---') {
+    if (pos === closePos) {
       if (!Object.hasOwn(data, 'title')) return { error: 'no title' };
-      return { data, body: end === -1 ? '' : text.slice(end + 1) };
+      return { data, body: closeEnd === -1 ? '' : text.slice(closeEnd + 1) };
     }
-    if (end === -1) return { error: 'the front matter is not closed' };
     pos = end + 1;
     if (isBlankLine(line) || line.charCodeAt(0) === 35) continue;
+    // the reference's line pattern cannot span a U+2028/U+2029
+    if (line.includes('\u2028') || line.includes('\u2029')) return { error: `line ${lineNo} is not "key: value"` };
     // /^([a-z_]+):(?: (.*))?$/
     let i = 0;
     while (i < line.length) {
